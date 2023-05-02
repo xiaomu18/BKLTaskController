@@ -1,0 +1,1 @@
+C:\Users\hyt18\AppData\Local\Programs\Python\Python38\python setup.py build_ext --inplace
