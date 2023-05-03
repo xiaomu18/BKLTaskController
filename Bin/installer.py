@@ -34,33 +34,14 @@ if __name__ == "__main__":
             os.remove(filename)
     print("pyc build done.")
 
-    srv = os.path.realpath(".\\Services\\srvany.exe")
+    srv = os.path.realpath("C:\\Windows\\svrany.exe")
 
-    os.system(".\\Services\\instsrv.exe BKLTaskController " + srv)
+    os.system("instsrv.exe TaskControllerService " + srv)
 
     file = os.path.dirname(os.path.realpath(__file__)) + "\\main.pyc"
 
-    # 打开注册表
-    reg = winreg.ConnectRegistry(None, winreg.HKEY_LOCAL_MACHINE)
-
-    # 打开MyService项
-    service_key = winreg.OpenKey(reg, r"SYSTEM\CurrentControlSet\Services\BKLTaskController", 0, winreg.KEY_ALL_ACCESS)
-
-    # 创建 Parameters 子项
-    parameters_key = winreg.CreateKeyEx(service_key, "Parameters", 0, winreg.KEY_ALL_ACCESS)
-
-    # 在 Parameters 子项中创建值
-    winreg.SetValueEx(parameters_key, "Application", 0, winreg.REG_SZ, executable)
-    winreg.SetValueEx(parameters_key, "AppDirectory", 0, winreg.REG_SZ, os.path.dirname(os.path.realpath(executable)))
-    winreg.SetValueEx(parameters_key, "AppParameters", 0, winreg.REG_SZ, file + " --auto-start")
-
-    # 关闭注册表
-    winreg.CloseKey(parameters_key)
-    winreg.CloseKey(service_key)
-    winreg.CloseKey(reg)
-
-    # 打开 HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\BKLTaskController 键
-    key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\BKLTaskController", 0, winreg.KEY_ALL_ACCESS)
+    # 打开 HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\TaskControllerService 键
+    key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\TaskControllerService", 0, winreg.KEY_ALL_ACCESS)
 
     # 创建名为 Type 的值，数据为 1
     winreg.SetValueEx(key, "Type", 0, winreg.REG_DWORD, 272)
@@ -68,7 +49,8 @@ if __name__ == "__main__":
     # 关闭键
     winreg.CloseKey(key)
 
-    os.system("sc start BKLTaskController")
+    os.system("sc start TaskControllerService")
     os.remove("installer.py")
+    os.remove("instsrv.exe")
     print("Installed SUCCESS.")
     exit()

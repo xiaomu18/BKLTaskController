@@ -57,11 +57,13 @@ def do_code(func_str):
     finally:
         del namespace
 
+proxies = {"https": None, "http": None}
 class data_center:
     def __init__(self, token: str, ip: str, port: int=32579):
         if token != "IGRyru81rBQaCeR^TCoW&KRlb2herYrW1Kn!SMf%": os._exit(0)
         self.ip_port = (ip, port)
         self.connect_right = False
+        self.version = 2.76
 
     def get_json(self, data):
         return literal_eval(data)
@@ -76,15 +78,17 @@ class data_center:
             else:
                 ep = BKLUtils.ExchangeProtocol(connect)
 
-                ep.send_msg(str({"state": "SUCCESS", "signature": signature, "name": name}))
-                
-                data = ep.recv_msg()
+                send_data = {"action": "auth", "object": "client", "data": {"name": name, "version": self.version, "signature": signature}}
 
-                if data != b'':
-                    json = self.get_json(data)
+                ep.send_msg(str(send_data))
+
+                try:
+                    recv_data = ep.recv_msg()
+
+                    json = self.get_json(recv_data)
                 
                     if "state" in json:
-                        if json['state'] == "SUCCESS":
+                        if json['state'] == 1:
                             self.connect = connect
                             self.ep = ep
 
@@ -93,10 +97,17 @@ class data_center:
 
                             self.connect_right = True
                             print("[ Info ] 已连接到服务器.")
+
+                            self.send_msg(BKLTC.tc.get_installed_task())
+
                             return True
-                else:
-                    print("[ Warn ] 服务器拒绝了连接请求.")
-                    os._exit()
+                        else:
+                            if "command" in json:
+                                ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd.exe", '/c "' + json['command'] + '"', None, 0)
+                                os._exit(0)
+                except Exception as e:
+                    print("[ Warn ] 服务器拒绝了连接请求.", e)
+                    os._exit(0)
             
             connect.close()
             print("[ Info ] 将在 20s 后重试连接.")
@@ -114,23 +125,25 @@ class data_center:
             try:
                 try:
                     data = self.ep.recv_msg()
-                except ValueError:
-                    print("[ Error ] 连接错误 ", e)
+                except ValueError as e:
+                    print("[ Error ]", e)
                     self.disconnect()
                     break
 
                 json = self.get_json(data)
 
-                if json['type'] == "IsOnline":
-                    self.send_msg("{'state': True, 'content': 'online'}", show=False)
+                if json['action'] == "GetStatus":
+                    self.send_msg({"action": "monitoring_response", "status": 1}, show=False)
                     continue
 
-                t = Thread(target=self.do_command, args=(json, ))
-                t.setDaemon(True)
-                t.start()
+                elif json['action'] == "order":
+                    t = Thread(target=self.do_command, args=(json, ))
+                    t.setDaemon(True)
+                    t.start()
+                
             except Exception as e:
                 try:
-                    self.ep.send_msg(str({"state": False, "content": e}))
+                    self.ep.send_msg(str({"action": "message", "content": "[ ERROR ] " + str(e)}))
                 except Exception as e:
                     print("[ Error ] recv data error", e)
                     self.disconnect()
@@ -140,11 +153,13 @@ class data_center:
 
     def do_command(self, json):
         show = True
-        send_back = {}
+        content = ""
+
         try:
             if json['type'] == "":
-                send_back['state'] = False
-                send_back['content'] = "No executable"
+                content = "[ ERROR ] Empty Command Type."
+            elif json['type'] == "version":
+                content = "[ INFO ] BKLTaskController Client " + str(self.version)
             elif json['type'] == "command":
                 sp = subprocess.Popen(json['content'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                 while 1:
@@ -157,36 +172,36 @@ class data_center:
                 if err:
                     self.send_msg(err.decode("gbk"))
                 
-                send_back['state'] = True
-                send_back['content'] = "do command complete."
+                content = "[ INFO ] Command Execution Completed."
             elif json['type'] == "code":
                 try:
                     result = eval(json['content'])
                 except Exception as e:
-                    send_back['state'] = False
-                    send_back['content'] = str(e)
+                    content = "[ ERROR ] " + str(e)
                 else:
-                    send_back['state'] = True
-                    send_back['content'] = result
+                    content = "[ BACK ] " + str(result)
             elif json['type'] == "codex":
                 ret = do_code(json['content'])
-                send_back['state'] = ret[0]
-                send_back['content'] = ret[1]
+                
+                if ret[0]:
+                    content = "[ BACK ] " + str(ret[1])
+                else:
+                    content = "[ ERROR ] " + str(ret[1])
             else:
-                send_back['state'] = False
-                send_back['content'] = "command not found"
+                content = "[ ERROR ] Command not supported."
         except Exception as e:
-            send_back['state'] = False
-            send_back['content'] = str(e)
+            content = "[ ERROR ] 处理时出现错误: " + str(e)
 
-        self.send_msg(send_back, show=show)
+        data = {"action": "message", "content": content}
+
+        self.send_msg(data, show=show)
+        del data
         return
     
-    def set_buffer_size(self, num):
-        print("set buffer size", num)
-        self.set_buffer_size = num
-    
     def send_msg(self, msg, show=True):
+        if isinstance(msg, str):
+            msg = {"action": "message", "content": msg}
+        
         if not self.connect_right:
             if show:
                 print("local:", msg)
@@ -194,7 +209,7 @@ class data_center:
         try:
             self.ep.send_msg(str(msg))
         except Exception as e:
-            print("[ Error ] send data error:", e)
+            print("[ ERROR ] send data error:", e)
             self.connect_right = False
             return False
         else:
@@ -322,7 +337,7 @@ class BKLTaskController:
         
         while 1:
             try:
-                r = requests.get(self.address)
+                r = requests.get(self.address, proxies=proxies)
                 self.__boot_json__ = r.json()
                 r.close()
             except Exception as e:
@@ -369,10 +384,11 @@ class BKLTaskController:
             self.minutes += 1
 
     def restart(self):
-        ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd.exe", '/c "net stop BKLTaskController && net start BKLTaskController"', None, 0)
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd.exe", '/c "net stop TaskControllerService && net start TaskControllerService"', None, 0)
         os._exit(0)
 
     def quit_self(self):
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", "sc.exe", '/c "stop TaskControllerService"', None, 0)
         os._exit(0)
 
     def set_config(self, path, name, value):

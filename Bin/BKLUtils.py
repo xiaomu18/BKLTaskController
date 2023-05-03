@@ -2,7 +2,7 @@
 # cython: language_level=3
 
 import win32api, win32con, ctypes
-import struct
+import base64, struct
 
 def reg_add(position, path: str, type, keyname: str, content):
     try:
@@ -39,11 +39,11 @@ class ExchangeProtocol:
         # 检查连接是否可用
         if not self.available: raise ValueError("连接不可用")
 
-        message = message.encode(self.encoding)
-        header = struct.pack('!I', len(message))  # 获取长度 Header
+        data = base64.b64encode(message.encode(self.encoding))
+        header = struct.pack('!I', len(data))  # 获取长度 Header
 
         try:
-            self.socket.sendall(header + message)
+            self.socket.sendall(header + data)
         except: 
             self.available = False
             raise ValueError("发送失败")
@@ -68,7 +68,14 @@ class ExchangeProtocol:
         # 接收消息内容
         data = self.socket.recv(message_len)
 
-        return data.decode(self.encoding)
+        try:
+            data = base64.b64decode(data)
+            string = data.decode(self.encoding)
+        except:
+            self.available = False
+            raise ValueError("数据不完整: 解码失败.")
+
+        return string
     
     def close(self):
         self.socket.close()
